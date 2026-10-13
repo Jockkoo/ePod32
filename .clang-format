@@ -3,5 +3,5 @@ IndentWidth: 4
 BreakBeforeBraces: Attach
 AllowShortIfStatementsOnASingleLine: false
 IndentCaseLabels: false
-ColumnLimit: 80
+ColumnLimit: 100
 Cpp11BracedListStyle: false
