@@ -1,27 +1,37 @@
 #include "button.h"
 
-// Make each button have it's own time
-static volatile uint64_t current_time_us = 0;
-static volatile uint64_t previous_time_us = 0;
-static volatile uint64_t elapsed_time_us = 0;
+// TODO maybe?, see if everything can be done with a semaphore instead of a queue
 
-typedef enum {
-    BUTTON_NOT_PRESSED,
-    BUTTON_PRESSED,
-} button_pressed_state_t;
+#define BUTTON_DELETE_MSG 0xFFFFF // No reason for this value, just not a real GPIO pin
 
-typedef struct {
+struct _button {
     button_config_t config;
     button_callback_fn callback;
-    uint16_t press_count;
     QueueHandle_t queue;
-} button_t;
+    // SemaphoreHandle_t semaphore;
+};
 
 static inline bool is_button_pressed(button_t *button) {
     button_active_level_t level =
         (gpio_get_level(button->config.gpio_num) == 1) ? (BUTTON_ACTIVE_HIGH) : (BUTTON_ACTIVE_LOW);
     bool pressed = (level == button->config.active_level);
     return pressed;
+}
+
+static void button_handle_event(button_t *button, uint8_t press_count) {
+    switch (press_count) {
+    case 1:
+        button->callback(button, BUTTON_EVENT_SINGLE_PRESS);
+        break;
+    case 2:
+        button->callback(button, BUTTON_EVENT_DOUBLE_PRESS);
+        break;
+    case 3:
+        button->callback(button, BUTTON_EVENT_TRIPLE_PRESS);
+        break;
+    default:
+        ESP_LOGE("ERROR", "Unknown event happened");
+    }
 }
 
 static void IRAM_ATTR button_isr_handler(void *arg) {
@@ -35,50 +45,75 @@ static void IRAM_ATTR button_isr_handler(void *arg) {
 
 static void button_task(void *pvParameters) {
     button_t *button = (button_t *)pvParameters;
+    uint32_t dummy_io;
+    TickType_t queue_wait_time = portMAX_DELAY;
+    TickType_t press_tick = 0;
+    TickType_t release_tick = 0;
+    uint8_t press_count = 0;
 
     while (1) {
-        if (xQueueReceive(button->queue, &button->config.gpio_num, portMAX_DELAY)) {
-            current_time_us = esp_timer_get_time();
-            uint16_t time_difference_ms = (current_time_us - previous_time_us) / 1000;
-
-            if (is_button_pressed(button) && time_difference_ms > button->config.debounce_time_ms) {
-                xQueueReset(button->queue);
-                // Registered the first click
-
-                uint8_t click_count button->callback(BUTTON_EVENT_SINGLE_CLICK);
-                TickType_t time_window = pdMS_TO_TICKS(button->config.multi_click_delay_ms);
-                TickType_t start_tick = xTaskGetTickCount();
-
-                while (1) {
-                    TickType_t elapsed_ticks = xTaskGetTickCount() - start_tick;
-                    TickType_t remaining_ticks = if (elapsed_ticks > time_window) { break; }
-                }
-                previous_time_us = current_time_us;
+        if (xQueueReceive(button->queue, &dummy_io, queue_wait_time)) {
+            // Deletion check
+            if (dummy_io == BUTTON_DELETE_MSG) {
+                // Placeholder for now
+                break;
             }
+
+            vTaskDelay(pdMS_TO_TICKS(button->config.debounce_time_ms));
+            xQueueReset(button->queue);
+
+            if (is_button_pressed(button)) {
+                queue_wait_time = portMAX_DELAY;
+                press_tick = xTaskGetTickCount();
+            } else {
+                press_count++;
+                release_tick = xTaskGetTickCount();
+                TickType_t ticks_held = release_tick - press_tick;
+
+                if (ticks_held >= pdMS_TO_TICKS(button->config.hold_time_ms)) {
+                    button->callback(button, BUTTON_EVENT_HOLD);
+                    press_count = 0;
+                } else {
+                    queue_wait_time = pdMS_TO_TICKS(button->config.multi_click_delay_ms);
+                    continue;
+                }
+            }
+
+        }
+        // Timeout
+        else {
+            queue_wait_time = portMAX_DELAY;
+            press_count = (press_count > 3) ? 3 : press_count;
+            button_handle_event(button, press_count);
+            press_count = 0;
         }
     }
+    // Placeholder function for now
+    ESP_LOGI("BUTTON", "Deleted at GPIO: %d", button->config.gpio_num);
+    // xSemaphoreGive(button->semaphore);
+    vTaskDelete(NULL);
 }
 
-void button_config(button_config_t *conf, button_callback_fn callback) {
-    button_t *button = malloc(sizeof(button_t));
+button_t *button_config(button_config_t *conf, button_callback_fn callback) {
+    button_t *button = calloc(1, sizeof(button_t));
     if (button == NULL) {
-        return;
+        return NULL;
     }
     button->config = *conf;
     button->callback = callback;
-    button->press_count = 0;
     button->queue = xQueueCreate(conf->queue_size, sizeof(uint32_t));
+    // button->semaphore = xSemaphoreCreateBinary();
 
     gpio_int_type_t intr_type;
     gpio_pullup_t pullup_en;
     gpio_pulldown_t pulldown_en;
 
     if (conf->active_level == BUTTON_ACTIVE_LOW) {
-        intr_type = GPIO_INTR_NEGEDGE;
+        intr_type = GPIO_INTR_ANYEDGE;
         pullup_en = GPIO_PULLUP_ENABLE;
         pulldown_en = GPIO_PULLDOWN_DISABLE;
     } else {
-        intr_type = GPIO_INTR_POSEDGE;
+        intr_type = GPIO_INTR_ANYEDGE;
         pullup_en = GPIO_PULLUP_DISABLE;
         pulldown_en = GPIO_PULLDOWN_ENABLE;
     }
@@ -96,4 +131,28 @@ void button_config(button_config_t *conf, button_callback_fn callback) {
         gpio_isr_handler_add(button->config.gpio_num, button_isr_handler, (void *)button);
     } // Maybe do something if this fails
     xTaskCreate(button_task, "button_task", 2048, button, 10, NULL);
+
+    return button;
 }
+
+void delete_button(button_t *self) {
+    if (self == NULL) {
+        return;
+    }
+    uint32_t delete_msg = BUTTON_DELETE_MSG; // Just a dummy for now, might add future functionality
+
+    gpio_intr_disable(self->config.gpio_num);
+    gpio_isr_handler_remove(self->config.gpio_num);
+
+    xQueueReset(self->queue);
+    xQueueSend(self->queue, &delete_msg, 0);
+    // xSemaphoreTake(button->semaphore, portMAX_DELAY);
+
+    // vSemaphoreDelete(button->semaphore);
+    vQueueDelete(self->queue);
+    gpio_reset_pin(self->config.gpio_num);
+
+    free(self);
+}
+
+gpio_num_t button_get_gpio(button_t *self) { return self->config.gpio_num; }

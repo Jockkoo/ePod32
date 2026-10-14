@@ -2,23 +2,29 @@
 #include "esp_log.h"
 #include <stddef.h>
 
-#define LED_GPIO 23
-#define BUTTON_GPIO 22
-#define DEBOUNCE_DELAY_MS 200
-#define MS_TO_US(ms) ((ms) * 1000ULL)
+#define BUTTON1_GPIO 22
+#define BUTTON2_GPIO 21
 
 static const char *TAG = "MAIN";
+static volatile uint8_t single_press_count = 0;
+static volatile uint8_t double_press_count = 0;
 
-void cb(button_event_t event) {
+void cb(button_t *button, button_event_t event) {
     switch (event) {
     case BUTTON_EVENT_SINGLE_PRESS:
-        ESP_LOGI(TAG, "Single press!");
+        ESP_LOGI(TAG, "Single press from GPIO: %d", button_get_gpio(button));
+        single_press_count++;
+        ESP_LOGI(TAG, "Single press count: %d", single_press_count);
         break;
     case BUTTON_EVENT_DOUBLE_PRESS:
-        ESP_LOGI(TAG, "Double press!");
+        ESP_LOGI(TAG, "Double press from GPIO: %d", button_get_gpio(button));
+        double_press_count++;
         break;
     case BUTTON_EVENT_TRIPLE_PRESS:
-        ESP_LOGI(TAG, "Triple press!");
+        ESP_LOGI(TAG, "Triple press from GPIO: %d", button_get_gpio(button));
+        break;
+    case BUTTON_EVENT_HOLD:
+        ESP_LOGI(TAG, "Held from GPIO: %d", button_get_gpio(button));
         break;
     default:
         ESP_LOGI(TAG, "Unknown action!");
@@ -29,8 +35,25 @@ void cb(button_event_t event) {
 void app_main(void) {
     ESP_LOGI(TAG, "Starting the prigram!");
 
-    button_config_t button_conf = button_config_default;
-    button_conf.gpio_num = BUTTON_GPIO;
-    button_conf.debounce_time_ms = 200;
-    button_config(&button_conf, cb);
+    button_config_t button_conf1 = button_config_default;
+    button_conf1.gpio_num = BUTTON1_GPIO;
+    button_t *button1 = button_config(&button_conf1, cb);
+    button_config_t button_conf2 = button_config_default;
+    button_conf2.gpio_num = BUTTON2_GPIO;
+    button_t *button2 = button_config(&button_conf2, cb);
+    while (1) {
+        // Testing code
+        if (single_press_count == 3) {
+            single_press_count = 0;
+            delete_button(button1);
+            button1 = NULL;
+        }
+        if (double_press_count == 3) {
+            double_press_count = 0;
+            delete_button(button2);
+            button2 = NULL;
+        }
+        //
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }

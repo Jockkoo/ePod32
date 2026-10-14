@@ -2,6 +2,7 @@
 #define BUTTON_H
 
 #include "driver/gpio.h"
+#include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -13,15 +14,15 @@
         .gpio_num = GPIO_NUM_0,                                                                    \
         .active_level = BUTTON_ACTIVE_LOW,                                                         \
         .debounce_time_ms = 50,                                                                    \
-        .multi_click_delay_ms = 500,                                                               \
-        .hold_time_ms = 1000,                                                                      \
+        .multi_click_delay_ms = 300,                                                               \
+        .hold_time_ms = 750,                                                                       \
         .queue_size = 10,                                                                          \
     }
 
 typedef enum {
-    BUTTON_EVENT_SINGLE_CLICK,
-    BUTTON_EVENT_DOUBLE_CLICK,
-    BUTTON_EVENT_TRIPLE_CLICK,
+    BUTTON_EVENT_SINGLE_PRESS,
+    BUTTON_EVENT_DOUBLE_PRESS,
+    BUTTON_EVENT_TRIPLE_PRESS,
     BUTTON_EVENT_HOLD,
 } button_event_t;
 
@@ -39,8 +40,14 @@ typedef struct {
     uint16_t queue_size;
 } button_config_t;
 
-typedef void (*button_callback_fn)(button_event_t event);
+typedef struct _button button_t;
 
-void button_config(button_config_t *button_io_conf, button_callback_fn callback_fn);
+typedef void (*button_callback_fn)(button_t *self, button_event_t event);
+
+button_t *button_config(button_config_t *button_io_conf, button_callback_fn callback_fn);
+void delete_button(button_t *self);
+
+// Implement more methods later
+gpio_num_t button_get_gpio(button_t *self);
 
 #endif
