@@ -63,31 +63,25 @@ static void update_song_selection(lv_obj_t **song_rows) {
     }
 }
 
-void scroll_down_cb(button_t *button, button_event_t event) {
+void scroll_down_cb(button_t *button, button_action_t action) {
     ui_actions_t ui_action;
-    switch (event) {
-    case BUTTON_EVENT_SINGLE_PRESS:
+    if (action == BUTTON_SINGLE_PRESS) {
         ESP_LOGI(TAG, "Single press from GPIO: %d", button_get_gpio(button));
         ui_action = SCROLL_DOWN;
         xQueueSend(g.queue, &ui_action, portMAX_DELAY);
-        break;
-    default:
+    } else {
         ESP_LOGI(TAG, "Unknown action!");
-        break;
     }
 }
 
-void scroll_up_cb(button_t *button, button_event_t event) {
+void scroll_up_cb(button_t *button, button_action_t action) {
     ui_actions_t ui_action;
-    switch (event) {
-    case BUTTON_EVENT_SINGLE_PRESS:
+    if (action == BUTTON_SINGLE_PRESS) {
         ESP_LOGI(TAG, "Single press from GPIO: %d", button_get_gpio(button));
         ui_action = SCROLL_UP;
         xQueueSend(g.queue, &ui_action, portMAX_DELAY);
-        break;
-    default:
+    } else {
         ESP_LOGI(TAG, "Unknown action!");
-        break;
     }
 }
 

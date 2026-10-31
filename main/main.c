@@ -21,7 +21,6 @@ void app_main(void) {
     btn_down_cfg.gpio_num = BUTTON_DOWN_GPIO;
     button_config(&btn_down_cfg, scroll_down_cb);
 
-    ui_init();
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(10));
     }

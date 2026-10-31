@@ -1,6 +1,7 @@
 #include "button.h"
 
 // TODO maybe?, see if everything can be done with a semaphore instead of a queue
+// TODO make signle press only variant
 
 #define BUTTON_DELETE_MSG 0xFFFFF // No reason for this value, just not a real GPIO pin
 
@@ -21,13 +22,13 @@ static inline bool is_button_pressed(button_t *button) {
 static void button_handle_event(button_t *button, uint8_t press_count) {
     switch (press_count) {
     case 1:
-        button->callback(button, BUTTON_EVENT_SINGLE_PRESS);
+        button->callback(button, BUTTON_SINGLE_PRESS);
         break;
     case 2:
-        button->callback(button, BUTTON_EVENT_DOUBLE_PRESS);
+        button->callback(button, BUTTON_DOUBLE_PRESS);
         break;
     case 3:
-        button->callback(button, BUTTON_EVENT_TRIPLE_PRESS);
+        button->callback(button, BUTTON_TRIPLE_PRESS);
         break;
     default:
         ESP_LOGE("ERROR", "Unknown event happened");
@@ -43,7 +44,30 @@ static void IRAM_ATTR button_isr_handler(void *arg) {
     }
 }
 
-static void button_task(void *pvParameters) {
+static void button_task_single_press_only(void *pvParameters) {
+    button_t *button = (button_t *)pvParameters;
+    uint32_t dummy_io;
+    while (1) {
+        if (xQueueReceive(button->queue, &dummy_io, portMAX_DELAY)) {
+
+            if (dummy_io == BUTTON_DELETE_MSG) {
+                break;
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(button->config.debounce_time_ms));
+            xQueueReset(button->queue);
+
+            if (is_button_pressed(button)) {
+                button->callback(button, BUTTON_SINGLE_PRESS);
+            }
+        }
+    }
+
+    ESP_LOGI("BUTTON", "Deleted at GPIO: %d", button->config.gpio_num);
+    vTaskDelete(NULL);
+}
+
+static void button_task_with_multi_click(void *pvParameters) {
     button_t *button = (button_t *)pvParameters;
     uint32_t dummy_io;
     TickType_t queue_wait_time = portMAX_DELAY;
@@ -70,8 +94,9 @@ static void button_task(void *pvParameters) {
                 release_tick = xTaskGetTickCount();
                 TickType_t ticks_held = release_tick - press_tick;
 
-                if (ticks_held >= pdMS_TO_TICKS(button->config.hold_time_ms)) {
-                    button->callback(button, BUTTON_EVENT_HOLD);
+                if (ticks_held >= pdMS_TO_TICKS(button->config.hold_time_ms) &&
+                    (button->config.actions_to_consider) & BUTTON_HOLD) {
+                    button->callback(button, BUTTON_HOLD);
                     press_count = 0;
                 } else {
                     queue_wait_time = pdMS_TO_TICKS(button->config.multi_click_delay_ms);
@@ -83,7 +108,11 @@ static void button_task(void *pvParameters) {
         // Timeout
         else {
             queue_wait_time = portMAX_DELAY;
-            press_count = (press_count > 3) ? 3 : press_count;
+            if (button->config.actions_to_consider & BUTTON_TRIPLE_PRESS) {
+                press_count = (press_count > 3) ? 3 : press_count;
+            } else {
+                press_count = (press_count > 2) ? 2 : press_count;
+            }
             button_handle_event(button, press_count);
             press_count = 0;
         }
@@ -130,7 +159,12 @@ button_t *button_config(button_config_t *conf, button_callback_fn callback) {
     if (err == ESP_OK || err == ESP_ERR_INVALID_STATE) {
         gpio_isr_handler_add(button->config.gpio_num, button_isr_handler, (void *)button);
     } // Maybe do something if this fails
-    xTaskCreate(button_task, "button_task", 2048, button, 10, NULL);
+
+    if (button->config.actions_to_consider == BUTTON_SINGLE_PRESS) {
+        xTaskCreate(button_task_single_press_only, "button_task", 2048, button, 10, NULL);
+    } else {
+        xTaskCreate(button_task_with_multi_click, "button_task", 2048, button, 10, NULL);
+    }
 
     return button;
 }

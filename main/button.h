@@ -17,14 +17,15 @@
         .multi_click_delay_ms = 300,                                                               \
         .hold_time_ms = 750,                                                                       \
         .queue_size = 10,                                                                          \
+        .actions_to_consider = BUTTON_SINGLE_PRESS,                                                \
     }
 
 typedef enum {
-    BUTTON_EVENT_SINGLE_PRESS,
-    BUTTON_EVENT_DOUBLE_PRESS,
-    BUTTON_EVENT_TRIPLE_PRESS,
-    BUTTON_EVENT_HOLD,
-} button_event_t;
+    BUTTON_SINGLE_PRESS = 0b0001,
+    BUTTON_DOUBLE_PRESS = 0b0010,
+    BUTTON_TRIPLE_PRESS = 0b0100,
+    BUTTON_HOLD = 0b1000,
+} button_action_t;
 
 typedef enum {
     BUTTON_ACTIVE_LOW = 0,
@@ -38,11 +39,12 @@ typedef struct {
     uint16_t multi_click_delay_ms;
     uint16_t hold_time_ms;
     uint16_t queue_size;
+    uint8_t actions_to_consider;
 } button_config_t;
 
 typedef struct _button button_t;
 
-typedef void (*button_callback_fn)(button_t *self, button_event_t event);
+typedef void (*button_callback_fn)(button_t *self, button_action_t action);
 
 button_t *button_config(button_config_t *button_io_conf, button_callback_fn callback_fn);
 void delete_button(button_t *self);
