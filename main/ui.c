@@ -13,7 +13,8 @@
 
 #define SONGS_PER_PAGE 5
 
-// TODO, add SIGNLE PRESS ONLY BUTTON VARIANT
+uint8_t placeholder_cnt1 = 0;
+uint8_t placeholder_cnt2 = 0;
 
 static const char *TAG = "UI";
 
@@ -68,6 +69,7 @@ void scroll_down_cb(button_t *button, button_action_t action) {
     if (action == BUTTON_SINGLE_PRESS) {
         ESP_LOGI(TAG, "Single press from GPIO: %d", button_get_gpio(button));
         ui_action = SCROLL_DOWN;
+        placeholder_cnt1++;
         xQueueSend(g.queue, &ui_action, portMAX_DELAY);
     } else {
         ESP_LOGI(TAG, "Unknown action!");
@@ -79,6 +81,7 @@ void scroll_up_cb(button_t *button, button_action_t action) {
     if (action == BUTTON_SINGLE_PRESS) {
         ESP_LOGI(TAG, "Single press from GPIO: %d", button_get_gpio(button));
         ui_action = SCROLL_UP;
+        placeholder_cnt2++;
         xQueueSend(g.queue, &ui_action, portMAX_DELAY);
     } else {
         ESP_LOGI(TAG, "Unknown action!");

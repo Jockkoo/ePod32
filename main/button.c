@@ -1,15 +1,18 @@
 #include "button.h"
 
-// TODO maybe?, see if everything can be done with a semaphore instead of a queue
-// TODO make signle press only variant
+// TODO maybe?, see if mulitple clicks can be done with a counting semapohore
 
 #define BUTTON_DELETE_MSG 0xFFFFF // No reason for this value, just not a real GPIO pin
 
 struct _button {
     button_config_t config;
     button_callback_fn callback;
-    QueueHandle_t queue;
-    // SemaphoreHandle_t semaphore;
+    // QueueHandle_t queue;
+    TaskHandle_t task_handle;
+    SemaphoreHandle_t semaphore;
+    SemaphoreHandle_t deletion_semaphore;
+    // Good practice to make sure a task is unblocked before deleting it
+    bool deletion;
 };
 
 static inline bool is_button_pressed(button_t *button) {
@@ -38,7 +41,7 @@ static void button_handle_event(button_t *button, uint8_t press_count) {
 static void IRAM_ATTR button_isr_handler(void *arg) {
     button_t *button = (button_t *)arg;
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xQueueSendFromISR(button->queue, &button->config.gpio_num, &xHigherPriorityTaskWoken);
+    xSemaphoreGiveFromISR(button->semaphore, &xHigherPriorityTaskWoken);
     if (xHigherPriorityTaskWoken) {
         portYIELD_FROM_ISR();
     }
@@ -46,24 +49,21 @@ static void IRAM_ATTR button_isr_handler(void *arg) {
 
 static void button_task_single_press_only(void *pvParameters) {
     button_t *button = (button_t *)pvParameters;
-    uint32_t dummy_io;
     while (1) {
-        if (xQueueReceive(button->queue, &dummy_io, portMAX_DELAY)) {
+        if (xSemaphoreTake(button->semaphore, portMAX_DELAY)) {
 
-            if (dummy_io == BUTTON_DELETE_MSG) {
+            if (button->deletion == true) {
                 break;
             }
 
             vTaskDelay(pdMS_TO_TICKS(button->config.debounce_time_ms));
-            xQueueReset(button->queue);
 
             if (is_button_pressed(button)) {
                 button->callback(button, BUTTON_SINGLE_PRESS);
             }
         }
     }
-
-    ESP_LOGI("BUTTON", "Deleted at GPIO: %d", button->config.gpio_num);
+    xSemaphoreGive(button->deletion_semaphore);
     vTaskDelete(NULL);
 }
 
@@ -76,15 +76,13 @@ static void button_task_with_multi_click(void *pvParameters) {
     uint8_t press_count = 0;
 
     while (1) {
-        if (xQueueReceive(button->queue, &dummy_io, queue_wait_time)) {
-            // Deletion check
-            if (dummy_io == BUTTON_DELETE_MSG) {
-                // Placeholder for now
+        if (xSemaphoreTake(button->semaphore, queue_wait_time)) {
+
+            if (button->deletion == true) {
                 break;
             }
 
             vTaskDelay(pdMS_TO_TICKS(button->config.debounce_time_ms));
-            xQueueReset(button->queue);
 
             if (is_button_pressed(button)) {
                 queue_wait_time = portMAX_DELAY;
@@ -117,9 +115,7 @@ static void button_task_with_multi_click(void *pvParameters) {
             press_count = 0;
         }
     }
-    // Placeholder function for now
-    ESP_LOGI("BUTTON", "Deleted at GPIO: %d", button->config.gpio_num);
-    // xSemaphoreGive(button->semaphore);
+    xSemaphoreGive(button->deletion_semaphore);
     vTaskDelete(NULL);
 }
 
@@ -130,8 +126,10 @@ button_t *button_config(button_config_t *conf, button_callback_fn callback) {
     }
     button->config = *conf;
     button->callback = callback;
-    button->queue = xQueueCreate(conf->queue_size, sizeof(uint32_t));
-    // button->semaphore = xSemaphoreCreateBinary();
+    button->semaphore = xSemaphoreCreateBinary();
+    button->deletion_semaphore = xSemaphoreCreateBinary();
+    button->task_handle = NULL;
+    button->deletion = false;
 
     gpio_int_type_t intr_type;
     gpio_pullup_t pullup_en;
@@ -155,38 +153,50 @@ button_t *button_config(button_config_t *conf, button_callback_fn callback) {
     };
     gpio_config(&io_conf);
 
+    ESP_LOGI("BUTTON", "Configuring button on GPIO: %d", button->config.gpio_num);
+
     esp_err_t err = gpio_install_isr_service(0);
     if (err == ESP_OK || err == ESP_ERR_INVALID_STATE) {
         gpio_isr_handler_add(button->config.gpio_num, button_isr_handler, (void *)button);
     } // Maybe do something if this fails
 
     if (button->config.actions_to_consider == BUTTON_SINGLE_PRESS) {
-        xTaskCreate(button_task_single_press_only, "button_task", 2048, button, 10, NULL);
+        xTaskCreate(button_task_single_press_only, "button_task", 2048, button, 10,
+                    &button->task_handle);
     } else {
-        xTaskCreate(button_task_with_multi_click, "button_task", 2048, button, 10, NULL);
+        xTaskCreate(button_task_with_multi_click, "button_task", 2048, button, 10,
+                    &button->task_handle);
     }
 
     return button;
 }
 
 void delete_button(button_t *self) {
+    if (self->deletion == true) {
+        return;
+    }
     if (self == NULL) {
         return;
     }
-    uint32_t delete_msg = BUTTON_DELETE_MSG; // Just a dummy for now, might add future functionality
+    gpio_num_t gpio = self->config.gpio_num;
+    self->deletion = true;
 
-    gpio_intr_disable(self->config.gpio_num);
-    gpio_isr_handler_remove(self->config.gpio_num);
+    ESP_LOGI("BUTTON", "Deleting button on GPIO: %d", gpio);
 
-    xQueueReset(self->queue);
-    xQueueSend(self->queue, &delete_msg, 0);
-    // xSemaphoreTake(button->semaphore, portMAX_DELAY);
+    gpio_intr_disable(gpio);
+    gpio_isr_handler_remove(gpio);
 
-    // vSemaphoreDelete(button->semaphore);
-    vQueueDelete(self->queue);
-    gpio_reset_pin(self->config.gpio_num);
+    xSemaphoreGive(self->semaphore);
+
+    xSemaphoreTake(self->deletion_semaphore, portMAX_DELAY);
+    vSemaphoreDelete(self->semaphore);
+    vSemaphoreDelete(self->deletion_semaphore);
+
+    gpio_reset_pin(gpio);
 
     free(self);
+    self = NULL;
+    ESP_LOGI("BUTTON", "Successfully deleted button on GPIO: %d", gpio);
 }
 
 gpio_num_t button_get_gpio(button_t *self) { return self->config.gpio_num; }
