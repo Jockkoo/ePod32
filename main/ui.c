@@ -13,26 +13,37 @@
 
 #define SONGS_PER_PAGE 5
 
-uint8_t placeholder_cnt1 = 0;
-uint8_t placeholder_cnt2 = 0;
+/*
+For now I will not destroy any labels, if I get memory
+issues along the way I will change this approach
+*/
 
-static const char *TAG = "UI";
+static const char *TAG = "UI FRONTEND";
 
-struct global_params_t {
+const char *welcome_screen_text = "Welcome User, to start listening press any button";
+
+typedef struct {
+    lv_obj_t *screen;
+    lv_obj_t *label;
+} ui_frontend_welcome_screen_handler_t;
+
+#define MAIN_MENU_ITEM_CNT 3
+
+typedef struct {
+    lv_obj_t *screen;
+    lv_obj_t **labels;
+} ui_frontend_main_menu_handler_t;
+
+typedef struct {
     epd_handle_t epd;
     lv_display_t *disp;
     lv_obj_t *scr;
-    lv_obj_t **song_rows;
-    QueueHandle_t queue;
-    int8_t selected_song;
-};
+    ui_frontend_welcome_screen_handler_t *welcome_screen_handler;
+    ui_frontend_main_menu_handler_t *main_menu_handler;
+} ui_frontend_hanlder_t;
 
-typedef enum {
-    SCROLL_UP,
-    SCROLL_DOWN,
-} ui_actions_t;
-
-static struct global_params_t g;
+static ui_frontend_hanlder_t ui_frontend_handler_loc;
+static ui_frontend_hanlder_t *ui_frontend_handler = &ui_frontend_handler_loc;
 
 static const char *songs[SONGS_PER_PAGE] = {
     "Song 1", "Song 2", "Song 3", "Song 4", "Song 5",
@@ -52,82 +63,119 @@ static void create_song_list(lv_obj_t *scr, lv_obj_t **song_rows) {
     }
 }
 
-static void update_song_selection(lv_obj_t **song_rows) {
-    for (size_t i = 0; i < SONGS_PER_PAGE; i++) {
-        if (i == g.selected_song) {
-            lv_obj_set_style_bg_color(song_rows[i], lv_color_black(), 0);
-            lv_obj_set_style_text_color(song_rows[i], lv_color_white(), 0);
+// static void update_song_selection(lv_obj_t **song_rows) {
+//     for (size_t i = 0; i < SONGS_PER_PAGE; i++) {
+//         if (i == g.selected_song) {
+//             lv_obj_set_style_bg_color(song_rows[i], lv_color_black(), 0);
+//             lv_obj_set_style_text_color(song_rows[i], lv_color_white(), 0);
+//         } else {
+//             lv_obj_set_style_bg_color(song_rows[i], lv_color_white(), 0);
+//             lv_obj_set_style_text_color(song_rows[i], lv_color_black(), 0);
+//         }
+//     }
+// }
+
+// Useful rendering functions
+
+static void make_label_retro(lv_obj_t *label) {
+    /* Implement shadow later
+    ---------------------
+    */
+    lv_obj_set_style_bg_opa(label, LV_OPA_100, 0);
+    lv_obj_set_style_border_width(label, 3, 0);
+    lv_obj_set_style_border_color(label, lv_color_black(), 0);
+    lv_obj_set_style_radius(label, 0, 0);
+    lv_obj_set_style_pad_all(label, 6, 0);
+}
+
+// Welcome screen
+
+static ui_frontend_welcome_screen_handler_t *create_welcome_screen() {
+    ui_frontend_welcome_screen_handler_t *welcome_screen_handler =
+        malloc(sizeof(ui_frontend_welcome_screen_handler_t));
+    welcome_screen_handler->screen = lv_obj_create(NULL);
+    welcome_screen_handler->label = lv_label_create(welcome_screen_handler->screen);
+    lv_obj_set_width(welcome_screen_handler->label, 100);
+    lv_obj_set_style_bg_color(ui_frontend_handler->scr, lv_color_white(), 0);
+    lv_obj_set_style_text_color(ui_frontend_handler->scr, lv_color_black(), 0);
+    lv_obj_align(welcome_screen_handler->label, LV_ALIGN_CENTER, 0, 0);
+    lv_label_set_long_mode(welcome_screen_handler->label, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(welcome_screen_handler->label, welcome_screen_text);
+    return welcome_screen_handler;
+}
+
+// Main menu screen
+
+static ui_frontend_main_menu_handler_t *create_main_menu() {
+    ui_frontend_main_menu_handler_t *main_menu_handler =
+        malloc(sizeof(ui_frontend_main_menu_handler_t));
+    main_menu_handler->screen = lv_obj_create(NULL);
+    main_menu_handler->labels = malloc(MAIN_MENU_ITEM_CNT * sizeof(lv_obj_t *));
+    for (size_t i = 0; i < MAIN_MENU_ITEM_CNT; i++) {
+        main_menu_handler->labels[i] = lv_label_create(main_menu_handler->screen);
+        lv_obj_set_width(main_menu_handler->labels[i], 100);
+        lv_obj_set_style_bg_color(main_menu_handler->screen, lv_color_white(), 0);
+        lv_obj_set_style_text_color(main_menu_handler->screen, lv_color_black(), 0);
+        make_label_retro(main_menu_handler->labels[i]);
+    }
+    lv_obj_align(main_menu_handler->labels[0], LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_align_to(main_menu_handler->labels[1], main_menu_handler->labels[0],
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_align(main_menu_handler->labels[2], LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_label_set_text(main_menu_handler->labels[0], "All songs");
+    lv_label_set_text(main_menu_handler->labels[1], "Favorites");
+    lv_label_set_text(main_menu_handler->labels[2], "User settings");
+    return main_menu_handler;
+}
+
+static void update_main_menu() {
+    for (size_t i = 0; i < MAIN_MENU_ITEM_CNT; i++) {
+        if (i == ui_handler->main_menu_handler.cursor_pos) {
+            lv_obj_set_style_bg_color(ui_frontend_handler->main_menu_handler->labels[i],
+                                      lv_color_black(), 0);
+            lv_obj_set_style_text_color(ui_frontend_handler->main_menu_handler->labels[i],
+                                        lv_color_white(), 0);
         } else {
-            lv_obj_set_style_bg_color(song_rows[i], lv_color_white(), 0);
-            lv_obj_set_style_text_color(song_rows[i], lv_color_black(), 0);
+            lv_obj_set_style_bg_color(ui_frontend_handler->main_menu_handler->labels[i],
+                                      lv_color_white(), 0);
+            lv_obj_set_style_text_color(ui_frontend_handler->main_menu_handler->labels[i],
+                                        lv_color_black(), 0);
         }
-    }
-}
-
-void scroll_down_cb(button_t *button, button_action_t action) {
-    ui_actions_t ui_action;
-    if (action == BUTTON_SINGLE_PRESS) {
-        ESP_LOGI(TAG, "Single press from GPIO: %d", button_get_gpio(button));
-        ui_action = SCROLL_DOWN;
-        placeholder_cnt1++;
-        xQueueSend(g.queue, &ui_action, portMAX_DELAY);
-    } else {
-        ESP_LOGI(TAG, "Unknown action!");
-    }
-}
-
-void scroll_up_cb(button_t *button, button_action_t action) {
-    ui_actions_t ui_action;
-    if (action == BUTTON_SINGLE_PRESS) {
-        ESP_LOGI(TAG, "Single press from GPIO: %d", button_get_gpio(button));
-        ui_action = SCROLL_UP;
-        placeholder_cnt2++;
-        xQueueSend(g.queue, &ui_action, portMAX_DELAY);
-    } else {
-        ESP_LOGI(TAG, "Unknown action!");
     }
 }
 
 static void ui_task(void *arg) {
-    create_song_list(g.scr, g.song_rows);
-    update_song_selection(g.song_rows);
     lv_timer_handler();
-    epd_lvgl_refresh(g.disp);
-    ui_actions_t ui_action;
+    epd_lvgl_refresh(ui_frontend_handler->disp);
 
     while (1) {
-        if (xQueueReceive(g.queue, &ui_action, portMAX_DELAY)) {
-            switch (ui_action) {
-            case SCROLL_DOWN:
-                g.selected_song++;
-                ESP_LOGI(TAG, "Action from queue: scroll DOWN");
+        if (xSemaphoreTake(ui_handler->ui_changed, portMAX_DELAY)) {
+            switch (ui_handler->current_ui_state) {
+            case WELCOME_SCREEN:
+                if (ui_handler->next_ui_state == MAIN_MENU) {
+                    ESP_LOGI(TAG, "Changing screen");
+                    update_main_menu();
+                    lv_screen_load(ui_frontend_handler->main_menu_handler->screen);
+                }
                 break;
-            case SCROLL_UP:
-                g.selected_song--;
-                ESP_LOGI(TAG, "Action from queue: scroll UP");
+            case MAIN_MENU:
+                update_main_menu();
                 break;
-            default:
+            case SONG_LIST:
+                break;
+            case USER_SETTINGS:
                 break;
             }
-            if (g.selected_song == SONGS_PER_PAGE) {
-                g.selected_song = 0;
-            } else if (g.selected_song < 0) {
-                g.selected_song = SONGS_PER_PAGE - 1;
-            }
-
-            update_song_selection(g.song_rows);
             lv_timer_handler();
-            epd_lvgl_refresh(g.disp);
+            epd_lvgl_refresh(ui_frontend_handler->disp);
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
 void ui_init() {
-    g.selected_song = 0;
-
-    lv_init(); /* Initialize LVGL internal Systems
-    We always want to initialize this first */
+    ui_backend_init();
+    ESP_LOGI(TAG, "Initializing UI frontend");
+    lv_init();
 
     epd_config_t cfg = {
         .pins = {
@@ -149,7 +197,7 @@ void ui_init() {
         },
     };
 
-    esp_err_t err = epd_init(&cfg, &g.epd);
+    esp_err_t err = epd_init(&cfg, &ui_frontend_handler->epd);
 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "EPD initialization failed: %s.", esp_err_to_name(err));
@@ -158,26 +206,32 @@ void ui_init() {
 
     epd_lvgl_config_t lvgl_cfg = EPD_LVGL_CONFIG_DEFAULT();
 
-    lvgl_cfg.epd = g.epd;
+    lvgl_cfg.epd = ui_frontend_handler->epd;
     lvgl_cfg.update_mode = EPD_UPDATE_PARTIAL;
     lvgl_cfg.use_partial_refresh = true;
     lvgl_cfg.partial_threshold = 100;
     lvgl_cfg.dither_mode = EPD_DITHER_NONE;
 
-    g.disp = epd_lvgl_init(&lvgl_cfg);
+    ui_frontend_handler->disp = epd_lvgl_init(&lvgl_cfg);
 
-    if (g.disp == NULL) {
+    if (ui_frontend_handler->disp == NULL) {
         ESP_LOGE(TAG, "LVGL initialization failed.: %s");
         vTaskDelete(NULL);
     }
 
-    g.scr = lv_screen_active();
+    ui_frontend_handler->scr = lv_screen_active();
 
-    lv_obj_set_style_bg_color(g.scr, lv_color_white(), 0);
-    lv_obj_set_style_text_color(g.scr, lv_color_black(), 0);
+    lv_obj_set_style_bg_color(ui_frontend_handler->scr, lv_color_white(), 0);
+    lv_obj_set_style_text_color(ui_frontend_handler->scr, lv_color_black(), 0);
 
-    g.song_rows = malloc(SONGS_PER_PAGE * sizeof(lv_obj_t *));
+    // Assigning all handles
+    ui_frontend_handler->welcome_screen_handler = create_welcome_screen();
+    ui_frontend_handler->main_menu_handler = create_main_menu();
 
-    g.queue = xQueueCreate(10, sizeof(ui_actions_t));
+    // FreeRTOS
     xTaskCreate(ui_task, "ui", 8192, NULL, 5, NULL);
+
+    lv_screen_load(ui_frontend_handler->welcome_screen_handler->screen);
+    // Give semaphore straight away to indicate the initial UI change
+    ESP_LOGI(TAG, "UI frontend initialized");
 }

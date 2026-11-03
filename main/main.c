@@ -4,6 +4,7 @@
 #include "epaper_lvgl.h"
 #include "esp_log.h"
 #include "ui.h"
+#include "ui_backend.h"
 #include <stdlib.h>
 
 #define BUTTON_UP_GPIO 32
@@ -25,11 +26,5 @@ void app_main(void) {
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(10));
-        if (placeholder_cnt1 == 3) {
-            delete_button(btn_down);
-        }
-        if (placeholder_cnt2 == 4) {
-            delete_button(btn_up);
-        }
     }
 }
