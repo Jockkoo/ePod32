@@ -119,7 +119,7 @@ static void button_task_with_multi_click(void *pvParameters) {
     vTaskDelete(NULL);
 }
 
-button_t *button_config(button_config_t *conf, button_callback_fn callback) {
+button_t *init_button(button_config_t *conf, button_callback_fn callback) {
     button_t *button = calloc(1, sizeof(button_t));
     if (button == NULL) {
         return NULL;
@@ -169,6 +169,13 @@ button_t *button_config(button_config_t *conf, button_callback_fn callback) {
     }
 
     return button;
+}
+
+button_t *init_default_button(uint8_t button_gpio, button_callback_fn cb) {
+    button_config_t btn_cfg = button_config_default;
+    btn_cfg.gpio_num = button_gpio;
+    button_t *btn = init_button(&btn_cfg, cb);
+    return btn;
 }
 
 void delete_button(button_t *self) {

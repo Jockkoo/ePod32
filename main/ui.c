@@ -11,12 +11,21 @@
 #define EPD_GPIO_BUSY 21
 #define EPD_SPI_CLK_FREQ 5000000 // 5MHz
 
-#define SONGS_PER_PAGE 5
+#define MAIN_MENU_ITEM_CNT 3
 
 /*
 For now I will not destroy any labels, if I get memory
 issues along the way I will change this approach
 */
+
+#define MAKE_LABEL_RETRO(label)                                                                    \
+    do {                                                                                           \
+        lv_obj_set_style_bg_opa(label, LV_OPA_100, 0);                                             \
+        lv_obj_set_style_border_width(label, 3, 0);                                                \
+        lv_obj_set_style_border_color(label, lv_color_black(), 0);                                 \
+        lv_obj_set_style_radius(label, 0, 0);                                                      \
+        lv_obj_set_style_pad_all(label, 6, 0);                                                     \
+    } while (0);
 
 static const char *TAG = "UI FRONTEND";
 
@@ -27,66 +36,24 @@ typedef struct {
     lv_obj_t *label;
 } ui_frontend_welcome_screen_handler_t;
 
-#define MAIN_MENU_ITEM_CNT 3
-
+// Usable for main menu, all songs and favorites
 typedef struct {
     lv_obj_t *screen;
     lv_obj_t **labels;
-} ui_frontend_main_menu_handler_t;
+    uint32_t current_selection;
+} ui_frontend_list_handler_t;
 
 typedef struct {
     epd_handle_t epd;
     lv_display_t *disp;
     lv_obj_t *scr;
     ui_frontend_welcome_screen_handler_t *welcome_screen_handler;
-    ui_frontend_main_menu_handler_t *main_menu_handler;
+    ui_frontend_list_handler_t *main_menu_handler;
+    ui_frontend_list_handler_t *song_list_handler;
 } ui_frontend_hanlder_t;
 
 static ui_frontend_hanlder_t ui_frontend_handler_loc;
 static ui_frontend_hanlder_t *ui_frontend_handler = &ui_frontend_handler_loc;
-
-static const char *songs[SONGS_PER_PAGE] = {
-    "Song 1", "Song 2", "Song 3", "Song 4", "Song 5",
-};
-
-static void create_song_list(lv_obj_t *scr, lv_obj_t **song_rows) {
-    for (size_t i = 0; i < SONGS_PER_PAGE; i++) {
-        song_rows[i] = lv_obj_create(scr);
-        lv_obj_set_size(song_rows[i], EPD_WIDTH - 20, 32);
-        lv_obj_set_pos(song_rows[i], 4, 8 + i * 32);
-        lv_obj_set_style_border_width(song_rows[i], 0, 0);
-        lv_obj_set_style_radius(song_rows[i], 0, 0);
-
-        lv_obj_t *label = lv_label_create(song_rows[i]);
-
-        lv_label_set_text(label, songs[i]);
-    }
-}
-
-// static void update_song_selection(lv_obj_t **song_rows) {
-//     for (size_t i = 0; i < SONGS_PER_PAGE; i++) {
-//         if (i == g.selected_song) {
-//             lv_obj_set_style_bg_color(song_rows[i], lv_color_black(), 0);
-//             lv_obj_set_style_text_color(song_rows[i], lv_color_white(), 0);
-//         } else {
-//             lv_obj_set_style_bg_color(song_rows[i], lv_color_white(), 0);
-//             lv_obj_set_style_text_color(song_rows[i], lv_color_black(), 0);
-//         }
-//     }
-// }
-
-// Useful rendering functions
-
-static void make_label_retro(lv_obj_t *label) {
-    /* Implement shadow later
-    ---------------------
-    */
-    lv_obj_set_style_bg_opa(label, LV_OPA_100, 0);
-    lv_obj_set_style_border_width(label, 3, 0);
-    lv_obj_set_style_border_color(label, lv_color_black(), 0);
-    lv_obj_set_style_radius(label, 0, 0);
-    lv_obj_set_style_pad_all(label, 6, 0);
-}
 
 // Welcome screen
 
@@ -104,19 +71,25 @@ static ui_frontend_welcome_screen_handler_t *create_welcome_screen() {
     return welcome_screen_handler;
 }
 
+static void render_welcome_screen() {
+    if (lv_screen_active() != ui_frontend_handler->welcome_screen_handler->screen) {
+        lv_screen_load(ui_frontend_handler->welcome_screen_handler->screen);
+    }
+}
+
 // Main menu screen
 
-static ui_frontend_main_menu_handler_t *create_main_menu() {
-    ui_frontend_main_menu_handler_t *main_menu_handler =
-        malloc(sizeof(ui_frontend_main_menu_handler_t));
+static ui_frontend_list_handler_t *create_main_menu() {
+    ui_frontend_list_handler_t *main_menu_handler = malloc(sizeof(ui_frontend_list_handler_t));
     main_menu_handler->screen = lv_obj_create(NULL);
     main_menu_handler->labels = malloc(MAIN_MENU_ITEM_CNT * sizeof(lv_obj_t *));
+    main_menu_handler->current_selection = ui_handler->navigator.cursor_pos;
     for (size_t i = 0; i < MAIN_MENU_ITEM_CNT; i++) {
         main_menu_handler->labels[i] = lv_label_create(main_menu_handler->screen);
         lv_obj_set_width(main_menu_handler->labels[i], 100);
         lv_obj_set_style_bg_color(main_menu_handler->screen, lv_color_white(), 0);
         lv_obj_set_style_text_color(main_menu_handler->screen, lv_color_black(), 0);
-        make_label_retro(main_menu_handler->labels[i]);
+        MAKE_LABEL_RETRO(main_menu_handler->labels[i]);
     }
     lv_obj_align(main_menu_handler->labels[0], LV_ALIGN_TOP_MID, 0, 10);
     lv_obj_align_to(main_menu_handler->labels[1], main_menu_handler->labels[0],
@@ -128,21 +101,35 @@ static ui_frontend_main_menu_handler_t *create_main_menu() {
     return main_menu_handler;
 }
 
-static void update_main_menu() {
-    for (size_t i = 0; i < MAIN_MENU_ITEM_CNT; i++) {
-        if (i == ui_handler->main_menu_handler.cursor_pos) {
-            lv_obj_set_style_bg_color(ui_frontend_handler->main_menu_handler->labels[i],
-                                      lv_color_black(), 0);
-            lv_obj_set_style_text_color(ui_frontend_handler->main_menu_handler->labels[i],
-                                        lv_color_white(), 0);
-        } else {
-            lv_obj_set_style_bg_color(ui_frontend_handler->main_menu_handler->labels[i],
-                                      lv_color_white(), 0);
-            lv_obj_set_style_text_color(ui_frontend_handler->main_menu_handler->labels[i],
-                                        lv_color_black(), 0);
-        }
+static void render_main_menu() {
+    // current_pos is one step behind actual position, we update that at the end
+    lv_obj_set_style_bg_color(
+        ui_frontend_handler->main_menu_handler
+            ->labels[ui_frontend_handler->main_menu_handler->current_selection],
+        lv_color_white(), 0);
+    lv_obj_set_style_text_color(
+        ui_frontend_handler->main_menu_handler
+            ->labels[ui_frontend_handler->main_menu_handler->current_selection],
+        lv_color_black(), 0);
+
+    lv_obj_set_style_bg_color(
+        ui_frontend_handler->main_menu_handler->labels[ui_handler->navigator.cursor_pos],
+        lv_color_black(), 0);
+    lv_obj_set_style_text_color(
+        ui_frontend_handler->main_menu_handler->labels[ui_handler->navigator.cursor_pos],
+        lv_color_white(), 0);
+
+    ui_frontend_handler->main_menu_handler->current_selection = ui_handler->navigator.cursor_pos;
+
+    if (lv_screen_active() != ui_frontend_handler->main_menu_handler->screen) {
+        lv_screen_load(ui_frontend_handler->main_menu_handler->screen);
     }
 }
+
+// Song lists (all songs and favorites)
+
+// TODO
+// static ui_frontend_list_handler_t *create_song_list() {}
 
 static void ui_task(void *arg) {
     lv_timer_handler();
@@ -152,18 +139,18 @@ static void ui_task(void *arg) {
         if (xSemaphoreTake(ui_handler->ui_changed, portMAX_DELAY)) {
             switch (ui_handler->current_ui_state) {
             case WELCOME_SCREEN:
-                if (ui_handler->next_ui_state == MAIN_MENU) {
-                    ESP_LOGI(TAG, "Changing screen");
-                    update_main_menu();
-                    lv_screen_load(ui_frontend_handler->main_menu_handler->screen);
-                }
+                render_welcome_screen();
                 break;
             case MAIN_MENU:
-                update_main_menu();
+                render_main_menu();
                 break;
-            case SONG_LIST:
+            case ALL_SONGS:
+                break;
+            case FAVORITES:
                 break;
             case USER_SETTINGS:
+                break;
+            default:
                 break;
             }
             lv_timer_handler();
@@ -230,8 +217,7 @@ void ui_init() {
 
     // FreeRTOS
     xTaskCreate(ui_task, "ui", 8192, NULL, 5, NULL);
-
     lv_screen_load(ui_frontend_handler->welcome_screen_handler->screen);
-    // Give semaphore straight away to indicate the initial UI change
+
     ESP_LOGI(TAG, "UI frontend initialized");
 }

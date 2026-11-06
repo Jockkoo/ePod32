@@ -3,24 +3,28 @@
 #include "epaper.h"
 #include "epaper_lvgl.h"
 #include "esp_log.h"
+#include "esp_spiffs.h"
+#include "inputs.h"
 #include "ui.h"
 #include "ui_backend.h"
 #include <stdlib.h>
-
-#define BUTTON_UP_GPIO 32
-#define BUTTON_DOWN_GPIO 33
 
 static const char *TAG = "MAIN";
 
 void app_main(void) {
     // move button to ui?
-    button_config_t btn_up_cfg = button_config_default;
-    btn_up_cfg.gpio_num = BUTTON_UP_GPIO;
-    button_t *btn_up = button_config(&btn_up_cfg, scroll_up_cb);
+    button_t *btn_up = init_default_button(BUTTON_UP_GPIO, scroll_up_cb);
+    button_t *btn_down = init_default_button(BUTTON_DOWN_GPIO, scroll_down_cb);
+    button_t *btn_confirm = init_default_button(BUTTON_CONFIRM_GPIO, confirm_cb);
 
-    button_config_t btn_down_cfg = button_config_default;
-    btn_down_cfg.gpio_num = BUTTON_DOWN_GPIO;
-    button_t *btn_down = button_config(&btn_down_cfg, scroll_down_cb);
+    // For string testing purposes
+    esp_vfs_spiffs_conf_t spiffs_conf = {
+        .base_path = "/spiffs",
+        .format_if_mount_failed = true,
+        .max_files = 2,
+        .partition_label = NULL,
+    };
+    esp_vfs_spiffs_register(&spiffs_conf);
 
     ui_init();
 

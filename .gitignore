@@ -1,5 +1,6 @@
 .vscode/
 .devcontainer/
+dependencies.lock
 
 # macOS
 .DS_Store

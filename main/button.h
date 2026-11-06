@@ -46,7 +46,8 @@ typedef struct _button button_t;
 
 typedef void (*button_callback_fn)(button_t *self, button_action_t action);
 
-button_t *button_config(button_config_t *button_io_conf, button_callback_fn callback_fn);
+button_t *init_button(button_config_t *button_io_conf, button_callback_fn callback_fn);
+button_t *init_default_button(uint8_t button_gpio, button_callback_fn cb);
 void delete_button(button_t *self);
 
 // Implement more methods later
