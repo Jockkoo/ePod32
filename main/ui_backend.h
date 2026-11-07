@@ -5,6 +5,8 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "stdio.h"
+#include <string.h>
 
 #define MAIN_MENU_ITEM_CNT 3
 #define SETTINGS_ITEM_CNT 5 // Add a better macro later

@@ -24,7 +24,14 @@ void app_main(void) {
         .max_files = 2,
         .partition_label = NULL,
     };
-    esp_vfs_spiffs_register(&spiffs_conf);
+    esp_err_t err = esp_vfs_spiffs_register(&spiffs_conf);
+
+    if (err != ESP_OK) {
+        ESP_LOGE("SPIFFS", "Mount failed: %s", esp_err_to_name(err));
+        return;
+    }
+
+    ESP_LOGI("SPIFFS", "Mounted successfully!");
 
     ui_init();
 

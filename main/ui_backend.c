@@ -6,8 +6,10 @@ static ui_handler_t ui_handler_loc;
 ui_handler_t *ui_handler = &ui_handler_loc;
 
 static page_t pages[PAGE_COUNT];
-static const page_id_t welcome_screen_subpage[] = { MAIN_MENU };
-static const page_id_t main_menu_subpages[] = { ALL_SONGS, FAVORITES, SETTINGS };
+static page_id_t welcome_screen_subpage[] = { MAIN_MENU };
+static page_id_t main_menu_subpages[] = { ALL_SONGS, FAVORITES, SETTINGS };
+
+// Functions bellow are placeholders -----------------------------------
 
 static void print_current_ui_state() {
     switch (ui_handler->current_page->id) {
@@ -28,12 +30,50 @@ static void print_current_ui_state() {
     }
 }
 
+static uint32_t get_all_songs_count() {
+    const char *path = "/spiffs/all_songs.txt";
+    FILE *f_all_songs = fopen(path, "r");
+    if (f_all_songs == NULL) {
+        ESP_LOGE(TAG, "Could not open file: %s", path);
+        return 0;
+    }
+    int c;
+    uint32_t lines = 1;
+    while ((c = fgetc(f_all_songs)) != EOF) {
+        if (c == '\n') {
+            lines++;
+        }
+    }
+    fclose(f_all_songs);
+    return lines;
+}
+
+static uint32_t get_favorites_count() {
+    const char *path = "/spiffs/favorites.txt";
+    FILE *f_all_songs = fopen(path, "r");
+    if (f_all_songs == NULL) {
+        ESP_LOGE(TAG, "Could not open file: %s", path);
+        return 0;
+    }
+    int c;
+    uint32_t lines = 1;
+    while ((c = fgetc(f_all_songs)) != EOF) {
+        if (c == '\n') {
+            lines++;
+        }
+    }
+    fclose(f_all_songs);
+    return lines;
+}
+
+// ------------------------------------------------ end of placeholder functions
+
 static void change_ui_state_uppon_confirm() {
     switch (ui_handler->current_page->id) {
     case MAIN_MENU:
+        // Set current page to be next page
         ui_handler->current_page =
-            ui_handler
-                ->menus[ui_handler->current_page->subpages[ui_handler->current_page->cursor_pos]];
+            ui_handler->menus[ui_handler->current_page->subpages[ui_handler->current_page->cursor_pos]];
         break;
     case ALL_SONGS:
         // TODO
@@ -114,14 +154,14 @@ static void init_all_menus() {
     // All songs
     ui_handler->menus[ALL_SONGS]->id = ALL_SONGS;
     ui_handler->menus[ALL_SONGS]->cursor_pos = 0;
-    ui_handler->menus[ALL_SONGS]->item_cnt = 0;
+    ui_handler->menus[ALL_SONGS]->item_cnt = get_all_songs_count();
     ui_handler->menus[ALL_SONGS]->parent = MAIN_MENU;
     ui_handler->menus[ALL_SONGS]->subpages = NULL;
 
     // Favorites
     ui_handler->menus[FAVORITES]->id = FAVORITES;
     ui_handler->menus[FAVORITES]->cursor_pos = 0;
-    ui_handler->menus[FAVORITES]->item_cnt = 0;
+    ui_handler->menus[FAVORITES]->item_cnt = get_favorites_count();
     ui_handler->menus[FAVORITES]->parent = MAIN_MENU;
     ui_handler->menus[FAVORITES]->subpages = NULL;
 
