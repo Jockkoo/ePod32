@@ -83,7 +83,7 @@ static ui_frontend_list_handler_t *create_main_menu() {
     ui_frontend_list_handler_t *main_menu_handler = malloc(sizeof(ui_frontend_list_handler_t));
     main_menu_handler->screen = lv_obj_create(NULL);
     main_menu_handler->labels = malloc(MAIN_MENU_ITEM_CNT * sizeof(lv_obj_t *));
-    main_menu_handler->current_selection = ui_handler->navigator.cursor_pos;
+    main_menu_handler->current_selection = ui_handler->current_page->cursor_pos;
     for (size_t i = 0; i < MAIN_MENU_ITEM_CNT; i++) {
         main_menu_handler->labels[i] = lv_label_create(main_menu_handler->screen);
         lv_obj_set_width(main_menu_handler->labels[i], 100);
@@ -113,13 +113,14 @@ static void render_main_menu() {
         lv_color_black(), 0);
 
     lv_obj_set_style_bg_color(
-        ui_frontend_handler->main_menu_handler->labels[ui_handler->navigator.cursor_pos],
+        ui_frontend_handler->main_menu_handler->labels[ui_handler->current_page->cursor_pos],
         lv_color_black(), 0);
     lv_obj_set_style_text_color(
-        ui_frontend_handler->main_menu_handler->labels[ui_handler->navigator.cursor_pos],
+        ui_frontend_handler->main_menu_handler->labels[ui_handler->current_page->cursor_pos],
         lv_color_white(), 0);
 
-    ui_frontend_handler->main_menu_handler->current_selection = ui_handler->navigator.cursor_pos;
+    ui_frontend_handler->main_menu_handler->current_selection =
+        ui_handler->current_page->cursor_pos;
 
     if (lv_screen_active() != ui_frontend_handler->main_menu_handler->screen) {
         lv_screen_load(ui_frontend_handler->main_menu_handler->screen);
@@ -129,7 +130,11 @@ static void render_main_menu() {
 // Song lists (all songs and favorites)
 
 // TODO
-// static ui_frontend_list_handler_t *create_song_list() {}
+static ui_frontend_list_handler_t *create_song_list() {
+    ui_frontend_list_handler_t *song_list = malloc(sizeof(ui_frontend_list_handler_t));
+
+    return song_list;
+}
 
 static void ui_task(void *arg) {
     lv_timer_handler();
@@ -137,7 +142,7 @@ static void ui_task(void *arg) {
 
     while (1) {
         if (xSemaphoreTake(ui_handler->ui_changed, portMAX_DELAY)) {
-            switch (ui_handler->current_ui_state) {
+            switch (ui_handler->current_page->id) {
             case WELCOME_SCREEN:
                 render_welcome_screen();
                 break;
@@ -148,7 +153,7 @@ static void ui_task(void *arg) {
                 break;
             case FAVORITES:
                 break;
-            case USER_SETTINGS:
+            case SETTINGS:
                 break;
             default:
                 break;
@@ -217,7 +222,8 @@ void ui_init() {
 
     // FreeRTOS
     xTaskCreate(ui_task, "ui", 8192, NULL, 5, NULL);
-    lv_screen_load(ui_frontend_handler->welcome_screen_handler->screen);
+
+    xSemaphoreGive(ui_handler->ui_changed);
 
     ESP_LOGI(TAG, "UI frontend initialized");
 }
