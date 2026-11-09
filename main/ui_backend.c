@@ -9,6 +9,18 @@ static page_t pages[PAGE_COUNT];
 static page_id_t welcome_screen_subpage[] = { MAIN_MENU };
 static page_id_t main_menu_subpages[] = { ALL_SONGS, FAVORITES, SETTINGS };
 
+#define default_menu_config(ID)                                                                                        \
+    do {                                                                                                               \
+        ui_handler->menus[(ID)]->id = (ID);                                                                            \
+        ui_handler->menus[(ID)]->cursor_pos = 0;                                                                       \
+        ui_handler->menus[(ID)]->item_cnt = 0;                                                                         \
+        ui_handler->menus[(ID)]->items_per_view = 0;                                                                   \
+        ui_handler->menus[(ID)]->current_view = 0;                                                                     \
+        ui_handler->menus[(ID)]->parent = NONE;                                                                        \
+        ui_handler->menus[(ID)]->subpages = NULL;                                                                      \
+        ui_handler->menus[(ID)]->view_changed = true;                                                                  \
+    } while (0)
+
 // Functions bellow are placeholders -----------------------------------
 
 static void print_current_ui_state() {
@@ -92,28 +104,46 @@ static void change_ui_state_uppon_confirm() {
 
 // TODO: there are some issues while navigating
 static void navigate(user_input_types_t event) {
-    uint8_t item_cnt = ui_handler->current_page->item_cnt;
+    page_t *current_page = ui_handler->current_page;
+    uint32_t item_cnt = current_page->item_cnt;
+    uint32_t items_per_view = current_page->items_per_view;
+    uint16_t last_view = current_page->current_view;
+    ESP_LOGI(TAG, "Cursor before logic: %d", current_page->cursor_pos);
+    ESP_LOGI(TAG, "View before logic: %d", current_page->current_view);
     switch (event) {
     case MOVE_UP:
-        if (ui_handler->current_page->cursor_pos == 0) {
-            ui_handler->current_page->cursor_pos = item_cnt - 1;
+        if (current_page->cursor_pos == 0) {
+            current_page->cursor_pos = item_cnt - 1;
         } else {
-            ui_handler->current_page->cursor_pos--;
+            current_page->cursor_pos--;
+        }
+        current_page->current_view = current_page->cursor_pos / items_per_view;
+        if (current_page->current_view != last_view) {
+            current_page->view_changed = true;
         }
         break;
     case MOVE_DOWN:
-        if (ui_handler->current_page->cursor_pos == item_cnt - 1) {
-            ui_handler->current_page->cursor_pos = 0;
+        if (current_page->cursor_pos == item_cnt - 1) {
+            current_page->cursor_pos = 0;
         } else {
-            ui_handler->current_page->cursor_pos++;
+            current_page->cursor_pos++;
+        }
+        current_page->current_view = current_page->cursor_pos / items_per_view;
+        if (current_page->current_view != last_view) {
+            current_page->view_changed = true;
         }
         break;
     case CONFIRM:
         change_ui_state_uppon_confirm();
         break;
+    case BACK:
+        ui_handler->current_page = ui_handler->menus[ui_handler->current_page->parent];
+        break;
     default:
         break;
     }
+    ESP_LOGI(TAG, "Cursor after logic: %d", current_page->cursor_pos);
+    ESP_LOGI(TAG, "View after logic: %d", current_page->current_view);
     xSemaphoreGive(ui_handler->ui_changed);
 }
 
@@ -138,39 +168,32 @@ static void init_all_menus() {
         ui_handler->menus[i] = &pages[i];
     }
     // Welcome screen
-    ui_handler->menus[WELCOME_SCREEN]->id = WELCOME_SCREEN;
-    ui_handler->menus[WELCOME_SCREEN]->cursor_pos = 0;
-    ui_handler->menus[WELCOME_SCREEN]->item_cnt = 0;
-    ui_handler->menus[WELCOME_SCREEN]->parent = NONE;
+    default_menu_config(WELCOME_SCREEN);
     ui_handler->menus[WELCOME_SCREEN]->subpages = welcome_screen_subpage;
 
     // Main menu
-    ui_handler->menus[MAIN_MENU]->id = MAIN_MENU;
-    ui_handler->menus[MAIN_MENU]->cursor_pos = 0;
+    default_menu_config(MAIN_MENU);
     ui_handler->menus[MAIN_MENU]->item_cnt = MAIN_MENU_ITEM_CNT;
+    ui_handler->menus[MAIN_MENU]->items_per_view = MAIN_MENU_ITEM_CNT;
     ui_handler->menus[MAIN_MENU]->parent = WELCOME_SCREEN;
     ui_handler->menus[MAIN_MENU]->subpages = main_menu_subpages;
 
     // All songs
-    ui_handler->menus[ALL_SONGS]->id = ALL_SONGS;
-    ui_handler->menus[ALL_SONGS]->cursor_pos = 0;
+    default_menu_config(ALL_SONGS);
     ui_handler->menus[ALL_SONGS]->item_cnt = get_all_songs_count();
+    ui_handler->menus[ALL_SONGS]->items_per_view = SONGS_PER_VIEW;
     ui_handler->menus[ALL_SONGS]->parent = MAIN_MENU;
-    ui_handler->menus[ALL_SONGS]->subpages = NULL;
 
     // Favorites
-    ui_handler->menus[FAVORITES]->id = FAVORITES;
-    ui_handler->menus[FAVORITES]->cursor_pos = 0;
+    default_menu_config(FAVORITES);
     ui_handler->menus[FAVORITES]->item_cnt = get_favorites_count();
+    ui_handler->menus[FAVORITES]->items_per_view = SONGS_PER_VIEW;
     ui_handler->menus[FAVORITES]->parent = MAIN_MENU;
-    ui_handler->menus[FAVORITES]->subpages = NULL;
 
     // User settings
-    ui_handler->menus[SETTINGS]->id = SETTINGS;
-    ui_handler->menus[SETTINGS]->cursor_pos = 0;
+    default_menu_config(SETTINGS);
     ui_handler->menus[SETTINGS]->item_cnt = SETTINGS_ITEM_CNT;
     ui_handler->menus[SETTINGS]->parent = MAIN_MENU;
-    ui_handler->menus[SETTINGS]->subpages = NULL;
 }
 
 void ui_backend_init() {

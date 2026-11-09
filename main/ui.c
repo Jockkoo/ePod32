@@ -44,7 +44,8 @@ typedef struct {
 
 typedef struct {
     lv_obj_t *screen;
-    lv_obj_t *list;
+    lv_obj_t **labels;
+    uint8_t songs_per_page;
     uint32_t current_selection;
 } ui_song_list_t;
 
@@ -54,7 +55,7 @@ typedef struct {
     lv_obj_t *scr;
     ui_welcome_screen_t *welcome_screen;
     ui_main_menu_t *main_menu;
-    ui_main_menu_t *song_list;
+    ui_song_list_t *song_list;
 } ui_frontend_t;
 
 static ui_frontend_t ui_frontend_handler_loc;
@@ -87,7 +88,7 @@ static ui_main_menu_t *create_main_menu() {
     ui_main_menu_t *main_menu = malloc(sizeof(ui_main_menu_t));
     main_menu->screen = lv_obj_create(NULL);
     main_menu->labels = malloc(MAIN_MENU_ITEM_CNT * sizeof(lv_obj_t *));
-    main_menu->current_selection = ui_handler->current_page->cursor_pos;
+    main_menu->current_selection = 0;
     for (size_t i = 0; i < MAIN_MENU_ITEM_CNT; i++) {
         main_menu->labels[i] = lv_label_create(main_menu->screen);
         lv_obj_set_width(main_menu->labels[i], 100);
@@ -124,22 +125,84 @@ static void render_main_menu() {
 }
 
 // Song lists (all songs and favorites)
-#define SONGS_PER_PAGE 6
 
 static ui_song_list_t *create_song_list() {
-    ui_song_list_t *song_list = malloc(sizeof(ui_main_menu_t));
+    ui_song_list_t *song_list = malloc(sizeof(ui_song_list_t));
     song_list->screen = lv_obj_create(NULL);
     // uint32_t item_cnt = ui_handler->current_page->item_cnt;
-    song_list->list = lv_obj_create(song_list->screen);
-    lv_obj_set_size(song_list->list, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_flex_flow(song_list->list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(song_list->list, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_border_width(song_list->list, 0, 0);
-    lv_obj_set_style_pad_all(song_list->list, 0, 0);
-    lv_obj_set_style_bg_color(song_list->list, lv_color_white(), 0);
+    song_list->songs_per_page = SONGS_PER_VIEW;
+    song_list->current_selection = 0;
+    lv_obj_set_flex_flow(song_list->screen, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(song_list->screen, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_border_width(song_list->screen, 0, 0);
+    lv_obj_set_style_pad_left(song_list->screen, 10, 0);
+    lv_obj_set_style_pad_top(song_list->screen, 20, 0);
+    lv_obj_set_style_pad_bottom(song_list->screen, 10, 0);
+    lv_obj_set_style_bg_color(song_list->screen, lv_color_white(), 0);
 
-    // TODO here
+    // We only need songs_per_page labels, later we only change the text!
+    song_list->labels = malloc(song_list->songs_per_page * sizeof(lv_obj_t *));
+    for (size_t i = 0; i < song_list->songs_per_page; i++) {
+        song_list->labels[i] = lv_label_create(song_list->screen);
+        lv_obj_set_width(song_list->labels[i], LV_PCT(100));
+        lv_obj_set_style_bg_color(song_list->labels[i], lv_color_white(), 0);
+        lv_obj_set_style_text_color(song_list->labels[i], lv_color_black(), 0);
+        lv_obj_set_style_bg_opa(song_list->labels[i], LV_OPA_100, 0);
+        lv_obj_set_style_border_width(song_list->labels[i], 1, 0);
+        lv_obj_set_style_border_side(song_list->labels[i], LV_BORDER_SIDE_BOTTOM, 0);
+        lv_obj_set_style_border_color(song_list->labels[i], lv_color_black(), 0);
+    }
     return song_list;
+}
+
+#define FILE_LINE_LEN 128 // No song name is this long anyway
+
+static void render_song_list() {
+    uint16_t relative_cursor_pos = get_relative_cursor_pos(ui_handler->current_page);
+    uint16_t counter = 0;
+
+    if (ui_handler->current_page->view_changed) {
+        FILE *fp = fopen("/spiffs/all_songs.txt", "r");
+        uint32_t current_line = 0;
+        uint32_t target_line = ui_handler->current_page->items_per_view * ui_handler->current_page->current_view;
+        ESP_LOGI(TAG, "Target line after view switch: %d", target_line);
+        char line[FILE_LINE_LEN];
+        while (fgets(line, sizeof(line), fp)) {
+            if (current_line >= target_line) {
+                ESP_LOGI(TAG, "Counter: %d", counter);
+                lv_label_set_text(ui_frontend_handler->song_list->labels[counter], line);
+                counter++;
+            }
+            if (++current_line == target_line + ui_handler->current_page->items_per_view) {
+                break;
+            }
+        }
+
+        // for (--counter; counter < ui_frontend_handler->song_list->songs_per_page; counter++) {
+        //     lv_obj_set_flag(ui_frontend_handler->song_list->labels[counter], LV_OBJ_FLAG_HIDDEN, true);
+        // }
+        // if (counter == ui_frontend_handler->song_list->songs_per_page - 1) {
+        //     lv_obj_set_flag(ui_frontend_handler->song_list->labels[counter], LV_OBJ_FLAG_HIDDEN, false);
+        // }
+        fclose(fp);
+    }
+
+    ESP_LOGI(TAG, "Current selection before drawing: %d", ui_frontend_handler->song_list->current_selection);
+    lv_obj_set_style_bg_color(ui_frontend_handler->song_list->labels[ui_frontend_handler->song_list->current_selection],
+                              lv_color_white(), 0);
+    lv_obj_set_style_text_color(
+        ui_frontend_handler->song_list->labels[ui_frontend_handler->song_list->current_selection], lv_color_black(), 0);
+
+    lv_obj_set_style_bg_color(ui_frontend_handler->song_list->labels[relative_cursor_pos], lv_color_black(), 0);
+    lv_obj_set_style_text_color(ui_frontend_handler->song_list->labels[relative_cursor_pos], lv_color_white(), 0);
+
+    ui_frontend_handler->song_list->current_selection = relative_cursor_pos;
+
+    if (lv_screen_active() != ui_frontend_handler->song_list->screen) {
+        lv_screen_load(ui_frontend_handler->song_list->screen);
+    }
+
+    ui_handler->current_page->view_changed = false;
 }
 
 static void ui_task(void *arg) {
@@ -156,6 +219,7 @@ static void ui_task(void *arg) {
                 render_main_menu();
                 break;
             case ALL_SONGS:
+                render_song_list();
                 break;
             case FAVORITES:
                 break;
@@ -225,6 +289,7 @@ void ui_init() {
     // Assigning all handles
     ui_frontend_handler->welcome_screen = create_welcome_screen();
     ui_frontend_handler->main_menu = create_main_menu();
+    ui_frontend_handler->song_list = create_song_list();
 
     // FreeRTOS
     xTaskCreate(ui_task, "ui", 8192, NULL, 5, NULL);

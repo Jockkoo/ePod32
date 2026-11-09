@@ -9,15 +9,15 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-#define button_config_default                                                                      \
-    {                                                                                              \
-        .gpio_num = GPIO_NUM_0,                                                                    \
-        .active_level = BUTTON_ACTIVE_LOW,                                                         \
-        .debounce_time_ms = 50,                                                                    \
-        .multi_click_delay_ms = 300,                                                               \
-        .hold_time_ms = 750,                                                                       \
-        .queue_size = 10,                                                                          \
-        .actions_to_consider = BUTTON_SINGLE_PRESS,                                                \
+#define BUTTON_CONFIG_DEFAULT                                                                                          \
+    {                                                                                                                  \
+        .gpio_num = GPIO_NUM_0,                                                                                        \
+        .active_level = BUTTON_ACTIVE_LOW,                                                                             \
+        .debounce_time_ms = 50,                                                                                        \
+        .multi_click_delay_ms = 300,                                                                                   \
+        .hold_time_ms = 750,                                                                                           \
+        .queue_size = 10,                                                                                              \
+        .actions_to_consider = BUTTON_SINGLE_PRESS,                                                                    \
     }
 
 typedef enum {

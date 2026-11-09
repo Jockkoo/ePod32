@@ -161,18 +161,16 @@ button_t *init_button(button_config_t *conf, button_callback_fn callback) {
     } // Maybe do something if this fails
 
     if (button->config.actions_to_consider == BUTTON_SINGLE_PRESS) {
-        xTaskCreate(button_task_single_press_only, "button_task", 2048, button, 10,
-                    &button->task_handle);
+        xTaskCreate(button_task_single_press_only, "button_task", 2048, button, 10, &button->task_handle);
     } else {
-        xTaskCreate(button_task_with_multi_click, "button_task", 2048, button, 10,
-                    &button->task_handle);
+        xTaskCreate(button_task_with_multi_click, "button_task", 2048, button, 10, &button->task_handle);
     }
 
     return button;
 }
 
 button_t *init_default_button(uint8_t button_gpio, button_callback_fn cb) {
-    button_config_t btn_cfg = button_config_default;
+    button_config_t btn_cfg = BUTTON_CONFIG_DEFAULT;
     btn_cfg.gpio_num = button_gpio;
     button_t *btn = init_button(&btn_cfg, cb);
     return btn;

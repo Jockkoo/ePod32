@@ -15,7 +15,11 @@ void app_main(void) {
     // move button to ui?
     button_t *btn_up = init_default_button(BUTTON_UP_GPIO, scroll_up_cb);
     button_t *btn_down = init_default_button(BUTTON_DOWN_GPIO, scroll_down_cb);
-    button_t *btn_confirm = init_default_button(BUTTON_CONFIRM_GPIO, confirm_cb);
+
+    button_config_t confirm_and_back_cfg = BUTTON_CONFIG_DEFAULT;
+    confirm_and_back_cfg.gpio_num = BUTTON_CONFIRM_AND_BACK_GPIO;
+    confirm_and_back_cfg.actions_to_consider = BUTTON_SINGLE_PRESS | BUTTON_DOUBLE_PRESS;
+    button_t *btn_confirm_and_back = init_button(&confirm_and_back_cfg, confirm_and_back_cb);
 
     // For string testing purposes
     esp_vfs_spiffs_conf_t spiffs_conf = {

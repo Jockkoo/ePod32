@@ -10,6 +10,7 @@
 
 #define MAIN_MENU_ITEM_CNT 3
 #define SETTINGS_ITEM_CNT 5 // Add a better macro later
+#define SONGS_PER_VIEW 5
 
 typedef enum {
     MOVE_UP = 0,
@@ -36,8 +37,11 @@ typedef struct {
     page_id_t id;
     page_id_t parent;
     page_id_t *subpages;
+    uint16_t items_per_view;
+    uint16_t current_view;
     uint32_t cursor_pos;
     uint32_t item_cnt;
+    bool view_changed;
 } page_t;
 
 typedef struct {
@@ -48,5 +52,9 @@ typedef struct {
 } ui_handler_t;
 
 void ui_backend_init();
+
+#define get_relative_cursor_pos(current_page) ((current_page->cursor_pos) % (current_page->items_per_view))
+
+#define get_view_cnt(current_page) ((current_page->item_cnt) / (current_page->items_per_view) + 1)
 
 #endif

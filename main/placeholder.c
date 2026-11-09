@@ -31,10 +31,10 @@
 // void app_main(void) {
 //     ESP_LOGI(TAG, "Starting the prigram!");
 
-//     button_config_t button_conf1 = button_config_default;
+//     button_config_t button_conf1 = BUTTON_CONFIG_DEFAULT;
 //     button_conf1.gpio_num = BUTTON1_GPIO;
 //     button_t *button1 = button_config(&button_conf1, cb);
-//     button_config_t button_conf2 = button_config_default;
+//     button_config_t button_conf2 = BUTTON_CONFIG_DEFAULT;
 //     button_conf2.gpio_num = BUTTON2_GPIO;
 //     button_t *button2 = button_config(&button_conf2, cb);
 //     while (1) {
